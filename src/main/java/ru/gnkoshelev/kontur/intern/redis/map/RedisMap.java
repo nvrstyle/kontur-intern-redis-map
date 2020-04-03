@@ -108,7 +108,17 @@ public class RedisMap implements Map<String,String> {
 
     @Override
     public String remove(Object key) {
-        throw new UnsupportedOperationException();
+        String keyString = key.toString();
+        try {
+            if (containsKey(keyString)) {
+                String previousValue = get(keyString);
+                jedis.hdel(hashName, keyString);
+                return previousValue;
+            }
+        } catch (Exception e){
+            System.out.println("Exception caught in remove: " + e.getMessage());
+        }
+        return null;
     }
 
     @Override
