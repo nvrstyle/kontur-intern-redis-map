@@ -6,6 +6,7 @@ import java.util.*;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPubSub;
 
 /**
  * @author Evgeny Lubich
@@ -15,6 +16,11 @@ public class RedisMap implements Map<String,String> {
 
     private static final ReferenceQueue<RedisMap> queue = new ReferenceQueue<>();
     private static final HashMap<String, RedisMapReference> references = new HashMap<>();
+    private static final HashMap<String, JedisSubscriber> jedisSubscribers = new HashMap<>();
+    public static String host;
+    public static int port;
+    private static JedisPool jedisPoolGeneral;
+    private static Jedis jedisGeneral;
     private static int count = 0;
 
     private JedisPool jedisPool;
@@ -51,6 +57,7 @@ public class RedisMap implements Map<String,String> {
         }
         count++;
         references.put(String.valueOf(this.hashCode()), new RedisMapReference(this, queue));
+        jedisSubscribers.put(String.valueOf(this.hashCode()), new JedisSubscriber(jedisPool, this.hashName));
     }
 
     @Override
@@ -206,6 +213,29 @@ public class RedisMap implements Map<String,String> {
         return this.entrySet().equals(((RedisMap) obj).entrySet());
     }
 
+    private static void initJedisGeneral(){
+        if (jedisPoolGeneral == null) {
+            jedisPoolGeneral = new JedisPool(host, port);
+            jedisGeneral = jedisPoolGeneral.getResource();
+        }
+    }
+
+    private static int getNumSubscribers(Jedis jedis, String channel){
+        int NumSubscribers = -1;
+        try {
+            NumSubscribers = Integer.parseInt(jedis.pubsubNumSub(channel).get(channel));
+        } catch (NumberFormatException e){
+            System.out.println("Exception caught in getNumSubscribers: " + e.getMessage());
+        }
+
+        return NumSubscribers;
+    }
+
+    public static int getNumSubscribers(String channel){
+        initJedisGeneral();
+        return getNumSubscribers(jedisGeneral, channel);
+    }
+
     private static void clearRedisHash(Jedis jedis, String hashName) {
         try {
             jedis.del(hashName);
@@ -232,7 +262,11 @@ public class RedisMap implements Map<String,String> {
         }
 
         public void clearRedis() {
-            clearRedisHash(jedis, this.hashName);
+            jedisSubscribers.get(this.hashCode).unsubscribe();
+            if (getNumSubscribers(jedis, this.hashName) == 0){
+                clearRedisHash(jedis, this.hashName);
+            }
+            jedisSubscribers.remove(this.hashName);
             references.remove(this);
             clear();
         }
@@ -264,6 +298,35 @@ public class RedisMap implements Map<String,String> {
                 //Освобождение ресурсов перед удалением ссылки
                 reference.clearRedis();
             }
+        }
+    }
+
+    private static class JedisSubscriber {
+        private Jedis jedisSubscriber;
+        private JedisPubSub subscriber = new JedisPubSub() {};
+        private Thread subscriberThread;
+
+        public JedisSubscriber(JedisPool jedisPool, String hashName) {
+            jedisSubscriber = jedisPool.getResource();
+            subscribe(hashName);
+        }
+
+        public void subscribe(String channel) {
+            subscriberThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        jedisSubscriber.subscribe(subscriber, channel);
+                    } catch (Exception e) {
+                        System.out.println(e);
+                    }
+                }
+            });
+            subscriberThread.start();
+        }
+
+        public void unsubscribe(){
+            subscriber.unsubscribe();
         }
     }
 
