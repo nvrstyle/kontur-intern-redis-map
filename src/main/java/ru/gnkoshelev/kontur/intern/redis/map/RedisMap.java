@@ -24,9 +24,7 @@ public class RedisMap implements Map<String,String> {
     }
 
     public RedisMap(){
-        jedisPool = new JedisPool();
-        jedis = jedisPool.getResource();
-        hashName = Integer.toHexString(hashCode());
+        this("localhost", 6379);
 
     }
 
