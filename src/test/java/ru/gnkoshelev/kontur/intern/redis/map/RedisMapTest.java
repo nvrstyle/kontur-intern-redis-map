@@ -13,8 +13,8 @@ import java.util.Set;
 public class RedisMapTest {
     @Test
     public void baseTests() {
-        Map<String, String> map1 = new RedisMap();
-        Map<String, String> map2 = new RedisMap();
+        Map<String, String> map1 = new RedisMap("docker",6379);
+        Map<String, String> map2 = new RedisMap("docker",6379);
 
         map1.put("one", "1");
 
@@ -42,4 +42,22 @@ public class RedisMapTest {
         Assert.assertEquals(1, values1.size());
         Assert.assertTrue(values1.contains("first"));
     }
+
+    @Test
+    public void GarbageCollectorTests() throws InterruptedException {
+        Map<String, String> map1 = new RedisMap("docker",6379);
+        String mapHashName = ((RedisMap) map1).getHashName();
+        Map<String, String> map2 = new RedisMap(mapHashName, "docker",6379);
+        map1.put("1", "Один");
+        map1.put("2", "Два");
+        map1.put("3", "Три");
+        map1.put("4", "Четыре");
+        Assert.assertEquals(4, map1.size());
+        Assert.assertEquals(4, map2.size());
+        map1 = null;
+        System.gc();
+        Thread.sleep(500);
+        Assert.assertEquals(0, map2.size());
+    }
+
 }

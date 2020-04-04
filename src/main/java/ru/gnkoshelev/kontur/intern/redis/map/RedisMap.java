@@ -1,5 +1,7 @@
 package ru.gnkoshelev.kontur.intern.redis.map;
 
+import java.lang.ref.PhantomReference;
+import java.lang.ref.ReferenceQueue;
 import java.util.*;
 
 import redis.clients.jedis.Jedis;
@@ -10,6 +12,10 @@ import redis.clients.jedis.JedisPool;
  */
 
 public class RedisMap implements Map<String,String> {
+
+    private static final ReferenceQueue<RedisMap> queue = new ReferenceQueue<>();
+    private static final HashMap<String, RedisMapReference> references = new HashMap<>();
+    private static int count = 0;
 
     private JedisPool jedisPool;
     private Jedis jedis;
@@ -43,6 +49,8 @@ public class RedisMap implements Map<String,String> {
         } else {
             this.hashName = hashName;
         }
+        count++;
+        references.put(String.valueOf(this.hashCode()), new RedisMapReference(this, queue));
     }
 
     @Override
@@ -197,4 +205,66 @@ public class RedisMap implements Map<String,String> {
     public boolean equals(Object obj) {
         return this.entrySet().equals(((RedisMap) obj).entrySet());
     }
+
+    private static void clearRedisHash(Jedis jedis, String hashName) {
+        try {
+            jedis.del(hashName);
+        } catch (Exception e) {
+            System.out.println("Exception caught in clearRedisHash: " + e.getMessage());
+        }
+    }
+
+
+    private static class RedisMapReference extends PhantomReference<RedisMap> {
+        private String hashCode;
+        private String hashName;
+        private JedisPool jedisPool;
+        private Jedis jedis;
+
+        public RedisMapReference(RedisMap redisMap, ReferenceQueue<RedisMap> queue) {
+            super(redisMap, queue);
+            hashName = redisMap.getHashName();
+            hashCode = String.valueOf(redisMap.hashCode());
+            jedisPool = redisMap.jedisPool;
+            jedis = redisMap.jedis;
+            Thread thread = new QueueReadingThread(queue);
+            thread.start();
+        }
+
+        public void clearRedis() {
+            clearRedisHash(jedis, this.hashName);
+            references.remove(this);
+            clear();
+        }
+
+        private static class QueueReadingThread extends Thread {
+
+            private ReferenceQueue<RedisMap> referenceQueue;
+
+            public QueueReadingThread(ReferenceQueue<RedisMap> referenceQueue) {
+                this.referenceQueue = referenceQueue;
+            }
+
+            @Override
+            public void run() {
+                RedisMapReference reference = null;
+
+                //ждем, пока в очереди появятся ссылки
+                while (reference == null) {
+
+                    try {
+                        Thread.sleep(50);
+                        reference = (RedisMapReference) referenceQueue.poll();
+                    }
+
+                    catch (InterruptedException e) {
+                        throw new RuntimeException("Поток " + getName() + " был прерван!");
+                    }
+                }
+                //Освобождение ресурсов перед удалением ссылки
+                reference.clearRedis();
+            }
+        }
+    }
+
 }
