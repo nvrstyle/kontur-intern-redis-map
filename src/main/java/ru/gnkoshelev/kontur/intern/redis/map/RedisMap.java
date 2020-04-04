@@ -14,7 +14,6 @@ public class RedisMap implements Map<String,String> {
     private JedisPool jedisPool;
     private Jedis jedis;
     private String hashName;
-
     public String getHashName() {
         return hashName;
     }
@@ -24,14 +23,26 @@ public class RedisMap implements Map<String,String> {
     }
 
     public RedisMap(){
-        this("localhost", 6379);
+        this("", "localhost", 6379);
 
     }
 
+    public RedisMap(String hashName) {
+        this(hashName,"localhost", 6379);
+    }
+
     public RedisMap(String host, int port){
+        this("", host, port);
+    }
+
+    public RedisMap(String hashName, String host, int port){
         jedisPool = new JedisPool(host, port);
         jedis = jedisPool.getResource();
-        hashName = Integer.toHexString(hashCode());
+        if (hashName.equals("")){
+            this.hashName = Integer.toHexString(hashCode());
+        } else {
+            this.hashName = hashName;
+        }
     }
 
     @Override
