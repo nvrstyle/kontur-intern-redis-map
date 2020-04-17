@@ -14,9 +14,9 @@ import redis.clients.jedis.JedisPubSub;
 
 public class RedisMap implements Map<String,String> {
 
-    private static final ReferenceQueue<RedisMap> queue = new ReferenceQueue<>();
-    private static final HashMap<String, RedisMapReference> references = new HashMap<>();
-    private static final HashMap<String, JedisSubscriber> jedisSubscribers = new HashMap<>();
+    private static final ReferenceQueue<RedisMap> QUEUE = new ReferenceQueue<>();
+    private static final HashMap<String, RedisMapReference> REFERENCES = new HashMap<>();
+    private static final HashMap<String, JedisSubscriber> JEDIS_SUBSCRIBERS = new HashMap<>();
     public static String host;
     public static int port;
     private static JedisPool jedisPoolGeneral;
@@ -56,8 +56,8 @@ public class RedisMap implements Map<String,String> {
             this.hashName = hashName;
         }
         count++;
-        references.put(String.valueOf(this.hashCode()), new RedisMapReference(this, queue));
-        jedisSubscribers.put(String.valueOf(this.hashCode()), new JedisSubscriber(jedisPool, this.hashName));
+        REFERENCES.put(String.valueOf(this.hashCode()), new RedisMapReference(this, QUEUE));
+        JEDIS_SUBSCRIBERS.put(String.valueOf(this.hashCode()), new JedisSubscriber(jedisPool, this.hashName));
     }
 
     @Override
@@ -207,12 +207,12 @@ public class RedisMap implements Map<String,String> {
         }
 
         public void clearRedis() {
-            jedisSubscribers.get(this.hashCode).unsubscribe();
+            JEDIS_SUBSCRIBERS.get(this.hashCode).unsubscribe();
             if (getNumSubscribers(jedis, this.hashName) == 0){
                 clearRedisHash(jedis, this.hashName);
             }
-            jedisSubscribers.remove(this.hashName);
-            references.remove(this);
+            JEDIS_SUBSCRIBERS.remove(this.hashName);
+            REFERENCES.remove(this);
             clear();
         }
 
